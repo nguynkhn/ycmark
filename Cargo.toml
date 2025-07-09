@@ -1,0 +1,8 @@
+[package]
+name = "ycmark"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pulldown-cmark = { version = "0.13.0", features = ["html"] }
+yaml-rust2 = "0.10.3"
