@@ -1,8 +1,30 @@
 use clap::Parser as CliParser;
-use pulldown_cmark::{CowStr, Event, Options, Parser, Tag};
+use pulldown_cmark::{CowStr, Event, Options as CMarkOptions, Parser as CMarkParser, Tag};
 use yaml_rust2::{Yaml, YamlLoader};
 
 use std::collections::HashMap;
+
+struct Options {
+    smart: bool,
+}
+
+impl Options {
+    fn to_parser_options(&self) -> CMarkOptions {
+        let mut options = CMarkOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS
+            | CMarkOptions::ENABLE_STRIKETHROUGH
+            | CMarkOptions::ENABLE_MATH
+            | CMarkOptions::ENABLE_GFM
+            | CMarkOptions::ENABLE_SUPERSCRIPT
+            | CMarkOptions::ENABLE_SUBSCRIPT
+            | CMarkOptions::ENABLE_WIKILINKS;
+
+        if self.smart {
+            options.insert(CMarkOptions::ENABLE_SMART_PUNCTUATION);
+        }
+
+        options
+    }
+}
 
 fn stringify(root: &Yaml) -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -51,12 +73,12 @@ fn stringify(root: &Yaml) -> HashMap<String, String> {
     map
 }
 
-fn convert(input: &str, template: Option<String>) -> String {
-    let options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
+fn convert(input: &str, template: Option<String>, options: Options) -> String {
+    let options = options.to_parser_options();
     let mut yaml_block: Option<CowStr> = None;
     let mut html_output = String::new();
 
-    let mut parser = Parser::new_ext(input, options).peekable();
+    let mut parser = CMarkParser::new_ext(input, options).peekable();
     if let Some(Event::Start(Tag::MetadataBlock(_))) = parser.peek() {
         if let Some(Event::Text(text)) = parser.nth(1) {
             yaml_block = Some(text);
@@ -96,6 +118,9 @@ struct Args {
 
     #[arg(short, long, value_name = "FILE")]
     output: Option<String>,
+
+    #[arg(long)]
+    smart: bool,
 }
 
 fn main() {
@@ -110,8 +135,9 @@ fn main() {
     let template = args
         .template
         .map(|path| std::fs::read_to_string(path).expect("failed to read template file"));
+    let options = Options { smart: args.smart };
 
-    let result = convert(&input, template);
+    let result = convert(&input, template, options);
     if let Some(file) = args.output {
         std::fs::write(file, result).expect("failed to write to file");
     } else {
