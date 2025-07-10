@@ -1,33 +1,13 @@
 use clap::Parser as CliParser;
-use pulldown_cmark::{CowStr, Event, Options as CMarkOptions, Parser as CMarkParser, Tag};
+use comrak::{markdown_to_html, Options as CMarkOptions};
 use yaml_rust2::{Yaml, YamlLoader};
 
 use std::collections::HashMap;
 
-struct Options {
-    smart: bool,
-}
+type Metadata = HashMap<String, String>;
 
-impl Options {
-    fn to_parser_options(&self) -> CMarkOptions {
-        let mut options = CMarkOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS
-            | CMarkOptions::ENABLE_STRIKETHROUGH
-            | CMarkOptions::ENABLE_MATH
-            | CMarkOptions::ENABLE_GFM
-            | CMarkOptions::ENABLE_SUPERSCRIPT
-            | CMarkOptions::ENABLE_SUBSCRIPT
-            | CMarkOptions::ENABLE_WIKILINKS;
-
-        if self.smart {
-            options.insert(CMarkOptions::ENABLE_SMART_PUNCTUATION);
-        }
-
-        options
-    }
-}
-
-fn stringify(root: &Yaml) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+fn stringify(root: &Yaml) -> Metadata {
+    let mut map = Metadata::new();
     let mut queue = vec![];
 
     queue.push(("".to_string(), root));
@@ -73,26 +53,51 @@ fn stringify(root: &Yaml) -> HashMap<String, String> {
     map
 }
 
+struct Options {
+    smart: bool,
+    safe: bool,
+}
+
+impl Options {
+    fn to_parser_options(&self) -> CMarkOptions {
+        let mut options = CMarkOptions::default();
+
+        if self.smart {
+            options.parse.smart = true;
+        }
+
+        if self.safe {
+            options.render.unsafe_ = false;
+        }
+
+        options
+    }
+}
+
 fn convert(input: &str, template: Option<String>, options: Options) -> String {
     let options = options.to_parser_options();
-    let mut yaml_block: Option<CowStr> = None;
-    let mut html_output = String::new();
+    let mut metadata: Option<Metadata> = None;
 
-    let mut parser = CMarkParser::new_ext(input, options).peekable();
-    if let Some(Event::Start(Tag::MetadataBlock(_))) = parser.peek() {
-        if let Some(Event::Text(text)) = parser.nth(1) {
-            yaml_block = Some(text);
-        }
-    }
+    // detect yaml metadata
+    let mut lines = input.trim().lines();
 
-    pulldown_cmark::html::push_html(&mut html_output, parser);
-    html_output = html_output.trim().to_owned();
+    if lines.next().is_some_and(|line| line == "---") {
+        let yaml_block = lines
+            .by_ref()
+            .take_while(|&line| !matches!(line, "..." | "---"))
+            .collect::<Vec<_>>()
+            .join("\n");
 
-    if let Some(yaml_block) = yaml_block {
+
         let yaml = YamlLoader::load_from_str(&yaml_block).unwrap();
         let root = &yaml[0];
 
-        let mut metadata = stringify(root);
+        metadata = Some(stringify(root));
+    }
+
+    let input = &lines.collect::<Vec<_>>().join("\n");
+    let mut html_output = markdown_to_html(input, &options).trim().to_string();
+    if let Some(mut metadata) = metadata {
         metadata.insert("body".to_string(), html_output.clone());
 
         if let Some(template) = template {
@@ -121,23 +126,32 @@ struct Args {
 
     #[arg(long)]
     smart: bool,
+
+    #[arg(long)]
+    safe: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    let input = if let Some(file) = args.file {
-        std::fs::read_to_string(file).expect("failed to read from file")
-    } else {
-        let stdin = std::io::stdin();
-        std::io::read_to_string(stdin).expect("failed to read from stdin")
-    };
+    let input = args.file.map_or_else(
+        || {
+            let stdin = std::io::stdin();
+            std::io::read_to_string(stdin).expect("failed to read from stdin")
+        },
+        |file| std::fs::read_to_string(file).expect("failed to read from file"),
+    );
+
     let template = args
         .template
         .map(|path| std::fs::read_to_string(path).expect("failed to read template file"));
-    let options = Options { smart: args.smart };
+    let options = Options {
+        smart: args.smart,
+        safe: args.safe,
+    };
 
     let result = convert(&input, template, options);
+    //  TODO: rewrite this
     if let Some(file) = args.output {
         std::fs::write(file, result).expect("failed to write to file");
     } else {

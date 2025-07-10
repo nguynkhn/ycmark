@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
-pulldown-cmark = { version = "0.13.0", features = ["html"] }
+comrak = "0.39.1"
 yaml-rust2 = "0.10.3"
