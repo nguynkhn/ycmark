@@ -53,22 +53,24 @@ fn stringify(root: &Yaml) -> Metadata {
     map
 }
 
+#[derive(Debug, Default)]
 struct Options {
     smart: bool,
     safe: bool,
+    hardbreaks: bool,
+    sourcepos: bool,
+    columns: usize,
 }
 
 impl Options {
     fn to_parser_options(&self) -> CMarkOptions {
         let mut options = CMarkOptions::default();
 
-        if self.smart {
-            options.parse.smart = true;
-        }
-
-        if self.safe {
-            options.render.unsafe_ = false;
-        }
+        options.parse.smart = self.smart;
+        options.render.unsafe_ = !self.safe;
+        options.render.hardbreaks = self.hardbreaks;
+        options.render.sourcepos = self.sourcepos;
+        options.render.width = self.columns;
 
         options
     }
@@ -87,7 +89,6 @@ fn convert(input: &str, template: Option<String>, options: Options) -> String {
             .take_while(|&line| !matches!(line, "..." | "---"))
             .collect::<Vec<_>>()
             .join("\n");
-
 
         let yaml = YamlLoader::load_from_str(&yaml_block).unwrap();
         let root = &yaml[0];
@@ -129,6 +130,15 @@ struct Args {
 
     #[arg(long)]
     safe: bool,
+
+    #[arg(long)]
+    hardbreaks: bool,
+
+    #[arg(long)]
+    sourcepos: bool,
+
+    #[arg(short, long, value_name = "NUMBER")]
+    columns: usize,
 }
 
 fn main() {
@@ -141,17 +151,18 @@ fn main() {
         },
         |file| std::fs::read_to_string(file).expect("failed to read from file"),
     );
-
     let template = args
         .template
         .map(|path| std::fs::read_to_string(path).expect("failed to read template file"));
     let options = Options {
         smart: args.smart,
         safe: args.safe,
+        hardbreaks: args.hardbreaks,
+        sourcepos: args.sourcepos,
+        columns: args.columns,
     };
 
     let result = convert(&input, template, options);
-    //  TODO: rewrite this
     if let Some(file) = args.output {
         std::fs::write(file, result).expect("failed to write to file");
     } else {
