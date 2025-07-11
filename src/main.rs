@@ -1,121 +1,13 @@
-use clap::Parser as CliParser;
-use comrak::{markdown_to_html, Options as CMarkOptions};
-use yaml_rust2::{Yaml, YamlLoader};
+use clap::Parser;
 
-use std::collections::HashMap;
+use ycmark::{convert, Format, Options, ParseError};
 
-type Metadata = HashMap<String, String>;
-
-fn stringify(root: &Yaml) -> Metadata {
-    let mut map = Metadata::new();
-    let mut queue = vec![];
-
-    queue.push(("".to_string(), root));
-
-    while let Some((key, node)) = queue.pop() {
-        let value = match node {
-            Yaml::Hash(h) => {
-                for (name, node) in h.into_iter() {
-                    let name = name.clone().into_string().unwrap();
-                    let key = if key.is_empty() {
-                        name
-                    } else {
-                        format!("{key}.{name}")
-                    };
-
-                    queue.push((key, node))
-                }
-                continue;
-            }
-            Yaml::Array(a) => {
-                for (index, node) in a.iter().enumerate() {
-                    let key = if key.is_empty() {
-                        index.to_string()
-                    } else {
-                        format!("{key}.{index}")
-                    };
-
-                    queue.push((key, node))
-                }
-                continue;
-            }
-            Yaml::Real(r) => r.to_string(),
-            Yaml::Integer(i) => i.to_string(),
-            Yaml::String(s) => s.clone(),
-            Yaml::Boolean(b) => b.to_string(),
-            Yaml::Null => "null".to_string(),
-            _ => "".to_string(),
-        };
-
-        map.insert(key, value);
-    }
-
-    map
-}
-
-#[derive(Debug, Default)]
-struct Options {
-    smart: bool,
-    safe: bool,
-    hardbreaks: bool,
-    sourcepos: bool,
-    columns: usize,
-}
-
-impl Options {
-    fn to_parser_options(&self) -> CMarkOptions {
-        let mut options = CMarkOptions::default();
-
-        options.parse.smart = self.smart;
-        options.render.unsafe_ = !self.safe;
-        options.render.hardbreaks = self.hardbreaks;
-        options.render.sourcepos = self.sourcepos;
-        options.render.width = self.columns;
-
-        options
-    }
-}
-
-fn convert(input: &str, template: Option<String>, options: Options) -> String {
-    let options = options.to_parser_options();
-    let mut metadata: Option<Metadata> = None;
-
-    // detect yaml metadata
-    let mut lines = input.trim().lines();
-
-    if lines.next().is_some_and(|line| line == "---") {
-        let yaml_block = lines
-            .by_ref()
-            .take_while(|&line| !matches!(line, "..." | "---"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let yaml = YamlLoader::load_from_str(&yaml_block).unwrap();
-        let root = &yaml[0];
-
-        metadata = Some(stringify(root));
-    }
-
-    let input = &lines.collect::<Vec<_>>().join("\n");
-    let mut html_output = markdown_to_html(input, &options).trim().to_string();
-    if let Some(mut metadata) = metadata {
-        metadata.insert("body".to_string(), html_output.clone());
-
-        if let Some(template) = template {
-            html_output = template.clone();
-
-            metadata.into_iter().for_each(|(key, value)| {
-                html_output = html_output.replace(&format!("${key}$"), &value);
-            });
-        }
-    }
-
-    html_output
-}
-
-#[derive(Debug, CliParser)]
+#[derive(Debug, Parser)]
 #[command(version, about)]
 struct Args {
+    #[arg(short, long, value_name = "FORMAT", value_enum, default_value_t = Format::Html)]
+    to: Format,
+
     #[arg(value_name = "FILE")]
     file: Option<String>,
 
@@ -137,7 +29,7 @@ struct Args {
     #[arg(long)]
     sourcepos: bool,
 
-    #[arg(short, long, value_name = "NUMBER")]
+    #[arg(short, long, value_name = "NUMBER", default_value_t = 0)]
     columns: usize,
 }
 
@@ -162,10 +54,15 @@ fn main() {
         columns: args.columns,
     };
 
-    let result = convert(&input, template, options);
-    if let Some(file) = args.output {
-        std::fs::write(file, result).expect("failed to write to file");
-    } else {
-        println!("{result}");
-    }
+    match convert(&input, args.to, template, options) {
+        Ok(output) => {
+            if let Some(file) = args.output {
+                std::fs::write(file, output).expect("failed to write to file");
+            } else {
+                println!("{output}");
+            }
+        }
+        Err(ParseError::Scan(err)) => eprintln!("failed to read metadata: {}", err.info()),
+        Err(ParseError::InvalidType) => eprintln!("failed to read metadata: unexpected type"),
+    };
 }
