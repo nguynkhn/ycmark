@@ -1,6 +1,5 @@
+use crate::metadata::{extract_yaml_block, parse_metadata, ParseError};
 use comrak::{markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html};
-
-use crate::metadata::{extract_yaml_block, parse_metadata, Metadata, ParseError};
 
 #[derive(Debug, Default, Clone, clap::ValueEnum)]
 #[clap(rename_all = "lowercase")]
@@ -21,15 +20,13 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn to_cmark_options(&self) -> comrak::Options {
+    pub fn to_comrak_options(&self) -> comrak::Options {
         let mut options = comrak::Options::default();
-
         options.parse.smart = self.smart;
         options.render.unsafe_ = !self.safe;
         options.render.hardbreaks = self.hardbreaks;
         options.render.sourcepos = self.sourcepos;
         options.render.width = self.columns;
-
         options
     }
 }
@@ -40,31 +37,29 @@ pub fn convert(
     template: Option<String>,
     options: Options,
 ) -> Result<String, ParseError> {
-    let options = options.to_cmark_options();
-    let mut metadata: Option<Metadata> = None;
-    let mut markdown_body = input;
+    let (metadata_str, markdown) = extract_yaml_block(input)
+        .map(|(meta, body)| (Some(meta), body))
+        .unwrap_or((None, input));
 
-    if let Some((yaml_block, _markdown_body)) = extract_yaml_block(input) {
-        markdown_body = _markdown_body;
-        metadata = Some(parse_metadata(yaml_block)?);
-    }
+    let metadata = match metadata_str {
+        Some(meta) => Some(parse_metadata(meta)?),
+        None => None,
+    };
 
+    let comrak_opts = options.to_comrak_options();
     let mut output = match format {
-        Format::Html => markdown_to_html(&markdown_body, &options),
-        Format::CommonMark => markdown_to_commonmark(&markdown_body, &options),
-        Format::Xml => markdown_to_commonmark_xml(&markdown_body, &options),
+        Format::Html => markdown_to_html(markdown, &comrak_opts),
+        Format::CommonMark => markdown_to_commonmark(markdown, &comrak_opts),
+        Format::Xml => markdown_to_commonmark_xml(markdown, &comrak_opts),
     };
     output = output.trim().to_string();
 
-    if let Some(mut metadata) = metadata {
-        if let Some(template) = template {
-            metadata.insert("body".to_string(), output);
-            output = template.clone();
+    if let (Some(template), Some(metadata)) = (template, metadata) {
+        output = template.replace("$body$", &output);
 
-            metadata.into_iter().for_each(|(key, value)| {
-                output = output.replace(&format!("${key}$"), &value);
-            });
-        }
+        metadata.into_iter().for_each(|(key, value)| {
+            output = output.replace(&format!("${key}$"), &value);
+        });
     }
 
     Ok(output)
