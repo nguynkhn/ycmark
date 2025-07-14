@@ -1,13 +1,15 @@
 mod cli;
 
 use clap::Parser;
-use std::fs;
-use std::io::{self, Read};
 
 use cli::Args;
 use ycmark::{convert, Format, Options};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+use std::error::Error;
+use std::fs;
+use std::io::{self, Read};
+
+fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
     let input = match &args.file {

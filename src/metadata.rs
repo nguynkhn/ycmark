@@ -1,7 +1,19 @@
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::{
+        anychar,
+        complete::{line_ending, space0},
+    },
+    combinator::{peek, recognize},
+    multi::many_till,
+    sequence::delimited,
+    IResult, Parser,
+};
 use yaml_rust2::{scanner::ScanError, Yaml, YamlLoader};
 
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 pub type Metadata = HashMap<String, String>;
 
@@ -29,19 +41,17 @@ impl std::error::Error for ParseError {
     }
 }
 
-pub fn extract_yaml_block(input: &str) -> Option<(&str, &str)> {
-    let mut lines = input.split_inclusive('\n');
+pub fn extract_yaml_block(input: &str) -> IResult<&str, &str> {
+    let yaml_begin_line = recognize((tag("---"), space0, line_ending));
+    let yaml_end_line = || {
+        alt((
+            recognize((tag("---"), space0, line_ending)),
+            recognize((tag("..."), space0, line_ending)),
+        ))
+    };
+    let yaml_content = recognize(many_till(anychar, peek(yaml_end_line())));
 
-    let begin_idx = lines.next().take_if(|line| line.trim_end() == "---")?.len();
-
-    let end_idx = lines
-        .by_ref()
-        .take_while(|line| !matches!(line.trim_end(), "---" | "..."))
-        .fold(begin_idx, |acc, line| acc + line.len());
-
-    let rest_idx = lines.fold(input.len(), |acc, line| acc - line.len());
-
-    Some((&input[begin_idx..end_idx], &input[rest_idx..]))
+    delimited(yaml_begin_line, yaml_content, yaml_end_line()).parse(input)
 }
 
 pub fn parse_metadata(input: &str) -> Result<Metadata, ParseError> {
@@ -100,6 +110,8 @@ pub fn parse_metadata(input: &str) -> Result<Metadata, ParseError> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_extract_success() {
         let input = "---
@@ -107,15 +119,15 @@ key: value
 ...
 markdown";
         let result = extract_yaml_block(input);
-        assert_eq!(result, Some(("key: value\n", "markdown")));
+        assert_eq!(result, Ok(("markdown", "key: value\n")));
     }
 
     #[test]
-    fn test_extract_success_2() {
+    fn test_extract_fail_eof() {
         let input = "---
 key: value";
         let result = extract_yaml_block(input);
-        assert_eq!(result, Some(("key: value", "")));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -124,7 +136,7 @@ key: value";
 ---
 key: value";
         let result = extract_yaml_block(input);
-        assert_eq!(result, None);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -135,10 +147,8 @@ key: value
 ...
 markdown";
         let result = extract_yaml_block(input);
-        assert_eq!(result, None);
+        assert!(result.is_err());
     }
-
-    use super::*;
 
     #[test]
     fn test_parse_success() {

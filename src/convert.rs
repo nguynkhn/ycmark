@@ -37,9 +37,9 @@ pub fn convert(
     template: Option<String>,
     options: Options,
 ) -> Result<String, ParseError> {
-    let (metadata_str, markdown) = extract_yaml_block(input)
-        .map(|(meta, body)| (Some(meta), body))
-        .unwrap_or((None, input));
+    let (markdown, metadata_str) = extract_yaml_block(input)
+        .map(|(body, meta)| (body, Some(meta)))
+        .unwrap_or((input, None));
 
     let metadata = match metadata_str {
         Some(meta) => Some(parse_metadata(meta)?),
