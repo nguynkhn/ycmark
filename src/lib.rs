@@ -1,5 +1,5 @@
-pub mod metadata;
 pub mod convert;
+pub mod metadata;
 
-pub use metadata::*;
 pub use convert::*;
+pub use metadata::*;

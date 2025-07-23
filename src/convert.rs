@@ -1,34 +1,14 @@
-use crate::metadata::{extract_yaml_block, parse_metadata, ParseError};
-use comrak::{markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html};
+use clap::ValueEnum;
+use comrak::{markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html, Options};
+use yaml_rust2::scanner::ScanError;
 
-#[derive(Debug, Default, Clone, clap::ValueEnum)]
-#[clap(rename_all = "lowercase")]
+use crate::metadata::{extract_metadata, parse_metadata};
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum Format {
-    #[default]
     Html,
     CommonMark,
     Xml,
-}
-
-#[derive(Debug, Default)]
-pub struct Options {
-    pub smart: bool,
-    pub safe: bool,
-    pub hardbreaks: bool,
-    pub sourcepos: bool,
-    pub columns: usize,
-}
-
-impl Options {
-    pub fn to_comrak_options(&self) -> comrak::Options {
-        let mut options = comrak::Options::default();
-        options.parse.smart = self.smart;
-        options.render.unsafe_ = !self.safe;
-        options.render.hardbreaks = self.hardbreaks;
-        options.render.sourcepos = self.sourcepos;
-        options.render.width = self.columns;
-        options
-    }
 }
 
 pub fn convert(
@@ -36,21 +16,20 @@ pub fn convert(
     format: Format,
     template: Option<String>,
     options: Options,
-) -> Result<String, ParseError> {
-    let (metadata_str, markdown) = extract_yaml_block(input)
-        .map(|(meta, body)| (Some(meta), body))
-        .unwrap_or((None, input));
+) -> Result<String, ScanError> {
+    let (markdown, metadata_str) = extract_metadata(input)
+        .map(|(body, meta)| (body, Some(meta)))
+        .unwrap_or((input, None));
 
     let metadata = match metadata_str {
         Some(meta) => Some(parse_metadata(meta)?),
         None => None,
     };
 
-    let comrak_opts = options.to_comrak_options();
     let mut output = match format {
-        Format::Html => markdown_to_html(markdown, &comrak_opts),
-        Format::CommonMark => markdown_to_commonmark(markdown, &comrak_opts),
-        Format::Xml => markdown_to_commonmark_xml(markdown, &comrak_opts),
+        Format::Html => markdown_to_html(markdown, &options),
+        Format::CommonMark => markdown_to_commonmark(markdown, &options),
+        Format::Xml => markdown_to_commonmark_xml(markdown, &options),
     };
     output = output.trim().to_string();
 

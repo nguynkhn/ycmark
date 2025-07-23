@@ -5,5 +5,8 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
-comrak = "0.39.1"
+comrak = "0.40.0"
+nom = "8.0.0"
+saphyr = "0.0.6"
+saphyr-parser = "0.0.6"
 yaml-rust2 = "0.10.3"
