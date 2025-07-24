@@ -17,14 +17,10 @@ pub fn convert(
     template: Option<String>,
     options: Options,
 ) -> Result<String, ScanError> {
-    let (markdown, metadata_str) = extract_metadata(input)
-        .map(|(body, meta)| (body, Some(meta)))
-        .unwrap_or((input, None));
-
-    let metadata = match metadata_str {
-        Some(meta) => Some(parse_metadata(meta)?),
-        None => None,
-    };
+    let (markdown, yaml) = extract_metadata(input).unwrap_or((input, ""));
+    let metadata = (!yaml.is_empty())
+        .then(|| parse_metadata(yaml))
+        .transpose()?;
 
     let mut output = match format {
         Format::Html => markdown_to_html(markdown, &options),

@@ -5,7 +5,7 @@ use nom::{
     character::complete::{anychar, line_ending, multispace0, not_line_ending, space0, space1},
     combinator::{eof, peek, recognize},
     multi::many_till,
-    sequence::delimited,
+    sequence::{delimited, preceded},
 };
 use yaml_rust2::{YamlLoader, scanner::ScanError, yaml::Yaml};
 
@@ -58,18 +58,18 @@ fn flatten_yaml(root: &Yaml, metadata: &mut Metadata) {
 }
 
 pub fn extract_metadata(input: &str) -> IResult<&str, &str> {
-    let yaml_comment = || recognize((space1, tag("#"), not_line_ending));
+    let yaml_comment = || recognize((tag("#"), not_line_ending));
     let yaml_begin_line = recognize((
         multispace0,
         tag("---"),
-        alt((yaml_comment(), space0)),
+        alt((preceded(space1, yaml_comment()), space0)),
         line_ending,
     ));
     let yaml_end_line = || {
         recognize((
             multispace0,
             alt((tag("..."), tag("---"))),
-            alt((yaml_comment(), space0)),
+            alt((preceded(space1, yaml_comment()), space0)),
             alt((line_ending, eof)),
         ))
     };
