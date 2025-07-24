@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use comrak::{markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html, Options};
+use comrak::{Options, markdown_to_commonmark, markdown_to_commonmark_xml, markdown_to_html};
 use yaml_rust2::scanner::ScanError;
 
 use crate::metadata::{extract_metadata, parse_metadata};

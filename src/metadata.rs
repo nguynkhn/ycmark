@@ -1,13 +1,13 @@
 use nom::{
+    IResult, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::{anychar, line_ending, multispace0, not_line_ending, space0, space1},
     combinator::{eof, peek, recognize},
     multi::many_till,
     sequence::delimited,
-    IResult, Parser,
 };
-use yaml_rust2::{scanner::ScanError, yaml::Yaml, YamlLoader};
+use yaml_rust2::{YamlLoader, scanner::ScanError, yaml::Yaml};
 
 use std::collections::HashMap;
 
@@ -28,39 +28,32 @@ fn flatten_yaml(root: &Yaml, metadata: &mut Metadata) {
     let mut queue = vec![("".to_string(), root)];
 
     while let Some((prefix, node)) = queue.pop() {
-        let value = match node {
-            Yaml::Hash(h) => {
-                for (k, v) in h {
-                    if let Some(k_str) = k.as_str() {
-                        let key = if prefix.is_empty() {
-                            k_str.to_string()
-                        } else {
-                            format!("{prefix}.{k_str}")
-                        };
-
-                        queue.push((key, v));
-                    }
-                }
-
-                continue;
-            }
-            Yaml::Array(a) => {
-                for (i, v) in a.iter().enumerate() {
-                    let key = if prefix.is_empty() {
-                        i.to_string()
+        match node {
+            Yaml::Hash(h) => h.iter().for_each(|(k, v)| {
+                if let Some(k_str) = k.as_str() {
+                    let new_key = if prefix.is_empty() {
+                        k_str.to_string()
                     } else {
-                        format!("{prefix}.{i}")
+                        format!("{prefix}.{k_str}")
                     };
 
-                    queue.push((key, v));
+                    queue.push((new_key, v));
                 }
+            }),
+            Yaml::Array(a) => a.iter().enumerate().for_each(|(i, v)| {
+                let new_key = if prefix.is_empty() {
+                    i.to_string()
+                } else {
+                    format!("{prefix}.{i}")
+                };
 
-                continue;
+                queue.push((new_key, v));
+            }),
+            _ => {
+                let value = stringify_yaml(node);
+                metadata.insert(prefix, value);
             }
-            _ => stringify_yaml(node),
-        };
-
-        metadata.insert(prefix, value);
+        }
     }
 }
 
@@ -88,7 +81,7 @@ pub fn parse_metadata(input: &str) -> Result<Metadata, ScanError> {
     let docs = YamlLoader::load_from_str(input)?;
     let mut metadata = Metadata::new();
 
-    if let Some(root) = docs.get(0).filter(|node| node.is_hash()) {
+    if let Some(root) = docs.first().filter(|node| node.is_hash()) {
         flatten_yaml(root, &mut metadata);
     }
 

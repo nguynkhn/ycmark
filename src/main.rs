@@ -1,7 +1,7 @@
 use clap::Parser;
 use comrak::Options;
 
-use ycmark::{convert, Format};
+use ycmark::{Format, convert};
 
 use std::{fs, io};
 
