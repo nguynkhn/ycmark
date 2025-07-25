@@ -49,7 +49,7 @@ pub fn apply_template(template: String, metadata: Metadata) -> String {
             .into_iter()
             .map(|node| match node {
                 TemplateNode::Literal(s) => s,
-                TemplateNode::Variable(s) if s.is_empty() => TEMPLATE_ESCAPED_CHAR,
+                TemplateNode::Variable("") => TEMPLATE_ESCAPED_CHAR,
                 TemplateNode::Variable(s) => metadata.get(s).map_or(s, |v| v.as_str()),
             })
             .collect(),
