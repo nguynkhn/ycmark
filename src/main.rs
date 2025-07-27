@@ -1,7 +1,7 @@
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use comrak::Options;
 
-use ycmark::{Format, convert};
+use ycmark::{Format, Metadata, convert};
 
 use std::{fs, io};
 
@@ -34,6 +34,18 @@ struct Args {
 
     #[arg(long)]
     sourcepos: bool,
+
+    #[arg(long, action = ArgAction::Append, value_parser = parse_key_value)]
+    metadata: Vec<(String, String)>,
+}
+
+fn parse_key_value(input: &str) -> Result<(String, String), String> {
+    let parts: Vec<&str> = input.splitn(2, ':').collect();
+
+    match parts.len() {
+        2 => Ok((parts[0].to_string(), parts[1].to_string())),
+        _ => Err(format!("expected format key:value, got '{input}'")),
+    }
 }
 
 impl Args {
@@ -61,11 +73,13 @@ fn main() {
         .template
         .as_ref()
         .map(|path| fs::read_to_string(path).expect("failed to read template"));
+    let metadata: Metadata = args.metadata.iter().cloned().collect();
 
-    let output = convert(&input, args.to, template, args.to_options()).unwrap_or_else(|err| {
-        eprintln!("error while reading metadata: {err}");
-        input
-    });
+    let output =
+        convert(&input, args.to, template, metadata, args.to_options()).unwrap_or_else(|err| {
+            eprintln!("error while reading metadata: {err}");
+            input
+        });
 
     match &args.output {
         Some(path) => fs::write(path, output).expect("failed to write to file"),

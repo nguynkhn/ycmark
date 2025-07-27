@@ -77,13 +77,12 @@ pub fn extract_metadata(input: &str) -> IResult<&str, &str> {
     delimited(yaml_begin_line, yaml_content, yaml_end_line()).parse(input)
 }
 
-pub fn read_metadata(input: &str) -> Result<Metadata, ScanError> {
+pub fn read_metadata(input: &str, metadata: &mut Metadata) -> Result<(), ScanError> {
     let docs = YamlLoader::load_from_str(input)?;
-    let mut metadata = Metadata::new();
 
     if let Some(root) = docs.first().filter(|node| node.is_hash()) {
-        flatten_yaml(root, &mut metadata);
+        flatten_yaml(root, metadata);
     }
 
-    Ok(metadata)
+    Ok(())
 }
